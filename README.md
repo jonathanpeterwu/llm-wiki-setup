@@ -84,6 +84,32 @@ security delete-generic-password -s "crowkit-mcp" -a "RESEND_API_KEY"
 
 The setup tool prompts for keys interactively and stores them — they never touch git or config files.
 
+## Auto-Capture Hook
+
+The wiki repo includes a `SessionEnd` hook that automatically commits and pushes wiki changes when a Claude Code session ends. This travels with the wiki via git — no extra config on new machines.
+
+```
+~/wiki/.claude/
+├── settings.json          # Hook config (project-level, portable via git)
+└── hooks/
+    └── capture.sh         # Auto-commit pages/, outputs/, index.md, log.md
+```
+
+**How it works:**
+1. Claude Code session ends
+2. Hook checks for uncommitted wiki changes
+3. If changes exist: stages, commits with timestamp, pushes to remote
+4. If offline: commits locally, pushes on next session
+
+The hook never touches `raw/` — only LLM-owned files get auto-committed.
+
+## GitButler (Optional)
+
+The setup wizard offers to install [GitButler](https://gitbutler.com) for virtual branch management. Useful for:
+- Keeping wiki changes on a separate virtual branch from code work
+- Reviewing wiki diffs independently before pushing
+- Managing parallel wiki + code changes without branch switching
+
 ## After Setup
 
 ```bash
@@ -136,10 +162,12 @@ npm version patch && npm publish && git push --follow-tags
 
 ## Roadmap
 
-### v0.2 — Skills
-- [ ] Migrate from legacy `~/.claude/commands/` to `~/.claude/skills/` format with YAML frontmatter
-- [ ] Ship `/ingest`, `/lint`, `/query` skills alongside `/next`
-- [ ] iCloud sync for skills directory
+### v0.2 — Skills (done)
+- [x] Migrate from legacy `~/.claude/commands/` to `~/.claude/skills/` format with YAML frontmatter
+- [x] Ship `/ingest`, `/lint` skills alongside `/next`
+- [x] iCloud sync for skills directory
+- [x] Auto-capture SessionEnd hook
+- [x] GitButler optional onboarding
 
 ### v0.3 — Cross-platform
 - [ ] Linux support for config sync (dotfiles repo fallback)
