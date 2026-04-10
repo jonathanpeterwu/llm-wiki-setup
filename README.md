@@ -112,6 +112,35 @@ npm publish
 npm version patch && npm publish && git push --follow-tags
 ```
 
+## Roadmap
+
+### v0.2 — Skills
+- [ ] Migrate from legacy `~/.claude/commands/` to `~/.claude/skills/` format with YAML frontmatter
+- [ ] Ship `/ingest`, `/lint`, `/query` skills alongside `/next`
+- [ ] iCloud sync for skills directory
+
+### v0.3 — Cross-platform
+- [ ] Linux support for config sync (dotfiles repo fallback)
+- [ ] WSL detection and path handling
+
+### v1.0 — Crowkit Cloud (paid)
+Zero-knowledge encrypted sync that works on any OS — not just Mac.
+
+- [ ] Client-side AES-256-GCM encryption (key derived from user password via PBKDF2, never transmitted)
+- [ ] S3 storage for encrypted config, skills, and API keys
+- [ ] Thin API layer (Lambda/Workers) for presigned URLs — server never touches plaintext
+- [ ] Auth via GitHub OAuth or email magic link
+- [ ] Stripe billing
+- [ ] `crowkit sync push` / `crowkit sync pull` CLI commands
+- [ ] `crowkit sync status` to diff local vs remote
+
+| | Free | Pro |
+|---|---|---|
+| Wiki sync | Git | Git |
+| Config + skills sync | iCloud (Mac only) | Encrypted S3 (any OS) |
+| API key sync | iCloud Keychain (Mac only) | Encrypted S3 (any OS) |
+| Platforms | macOS | macOS + Linux + WSL |
+
 ## Contributing
 
 1. Fork the repo
