@@ -58,13 +58,178 @@ function template(name) {
   return readFileSync(join(TEMPLATES, name), "utf-8");
 }
 
+function cmd(command, opts = {}) {
+  try {
+    return execSync(command, { encoding: "utf-8", stdio: "pipe", ...opts }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function checkTool(name, testCmd, loginCmd, loginNote) {
+  const result = cmd(testCmd);
+  if (result) {
+    return { name, ok: true, detail: result.split("\n")[0] };
+  }
+  return { name, ok: false, loginCmd, loginNote };
+}
+
+// Store a secret in macOS Keychain (falls back to env var instruction)
+function keychainSet(service, account, password) {
+  if (!IS_MAC) return false;
+  try {
+    execSync(
+      `security add-generic-password -U -s "${service}" -a "${account}" -w "${password}"`,
+      { stdio: "pipe" }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function keychainGet(service, account) {
+  if (!IS_MAC) return null;
+  try {
+    return execSync(
+      `security find-generic-password -s "${service}" -a "${account}" -w`,
+      { encoding: "utf-8", stdio: "pipe" }
+    ).trim();
+  } catch {
+    return null;
+  }
+}
+
+async function runAuthChecks() {
+  heading("Auth Preflight");
+
+  const checks = [
+    checkTool(
+      "GitHub CLI",
+      "gh auth status 2>&1 | head -3",
+      "gh auth login",
+      "Required to push wiki repo"
+    ),
+    checkTool(
+      "npm",
+      "npm whoami 2>&1",
+      "npm login",
+      "Required to publish packages"
+    ),
+    checkTool(
+      "Claude Code",
+      "claude --version 2>&1",
+      "npm install -g @anthropic-ai/claude-code",
+      "Required to use the wiki"
+    ),
+    checkTool(
+      "git user",
+      'git config user.email 2>&1',
+      'git config --global user.email "you@example.com" && git config --global user.name "Your Name"',
+      "Required for commits"
+    ),
+  ];
+
+  let allGood = true;
+  for (const c of checks) {
+    if (c.ok) {
+      log(`${c.name}: ${c.detail}`);
+    } else {
+      err(`${c.name}: not authenticated`);
+      console.log(`    Fix: ${c.loginCmd}`);
+      if (c.loginNote) console.log(`    (${c.loginNote})`);
+      allGood = false;
+    }
+  }
+
+  return { allGood, checks };
+}
+
+async function setupMcpKeys() {
+  heading("MCP Server API Keys");
+  console.log("  API keys are stored in macOS Keychain (or exported as env vars on Linux).\n");
+
+  const servers = [];
+  let addMore = true;
+
+  // Check for existing MCP servers in .claude.json
+  const claudeJson = join(HOME, ".claude.json");
+  if (existsSync(claudeJson)) {
+    const config = JSON.parse(readFileSync(claudeJson, "utf-8"));
+    const mcpServers = config.mcpServers || {};
+    const existing = Object.keys(mcpServers);
+    if (existing.length > 0) {
+      log(`Found existing MCP servers: ${existing.join(", ")}`);
+    }
+  }
+
+  while (addMore) {
+    const name = await ask("MCP server name (or 'done' to skip)", "done");
+    if (name === "done") break;
+
+    const url = await ask(`  ${name} URL`);
+    const needsKey = await ask(`  Does ${name} need an API key? (y/n)`, "n");
+
+    let envVar = null;
+    if (needsKey.toLowerCase() === "y") {
+      const keyName = await ask(`  Env var name (e.g., RESEND_API_KEY)`);
+      const existingKey = keychainGet("crowkit-mcp", keyName);
+
+      if (existingKey) {
+        log(`  Found existing key for ${keyName} in Keychain`);
+        envVar = { name: keyName, value: existingKey };
+      } else {
+        const keyValue = await ask(`  API key value (stored in Keychain, not in files)`);
+        if (IS_MAC) {
+          const stored = keychainSet("crowkit-mcp", keyName, keyValue);
+          if (stored) {
+            log(`  Stored ${keyName} in macOS Keychain`);
+          } else {
+            warn(`  Could not store in Keychain. Export manually: export ${keyName}="${keyValue}"`);
+          }
+        } else {
+          warn(`  No Keychain on this OS. Add to your shell profile: export ${keyName}="***"`);
+        }
+        envVar = { name: keyName, value: keyValue };
+      }
+    }
+
+    servers.push({ name, url, envVar });
+
+    // Add to Claude Code
+    try {
+      const envFlag = envVar ? ` -e ${envVar.name}=${envVar.value}` : "";
+      execSync(
+        `claude mcp add --transport http ${name} ${url} -s user${envFlag}`,
+        { stdio: "pipe" }
+      );
+      log(`  Added ${name} MCP server`);
+    } catch (e) {
+      warn(`  Could not add ${name} via CLI. Add manually: claude mcp add --transport http ${name} ${url} -s user`);
+    }
+  }
+
+  return servers;
+}
+
 async function main() {
   console.log(`
 ╔══════════════════════════════════════════╗
-║     LLM Wiki Setup (Karpathy Pattern)   ║
-║     For Claude Code + iCloud Sync        ║
+║            crowkit v0.1.0                ║
+║   LLM Wiki + Claude Code Harness        ║
 ╚══════════════════════════════════════════╝
 `);
+
+  // ── Step 0: Auth preflight ──
+  const { allGood } = await runAuthChecks();
+  if (!allGood) {
+    const proceed = await ask("\nSome tools are not authenticated. Continue anyway? (y/n)", "y");
+    if (proceed.toLowerCase() !== "y") {
+      console.log("\nFix auth issues above, then re-run: npx llm-wiki-setup");
+      rl.close();
+      return;
+    }
+  }
 
   // ── Step 1: Choose wiki location ──
   heading("Step 1: Wiki Location");
@@ -171,7 +336,14 @@ async function main() {
     log("Created README.md");
   }
 
-  // ── Step 7: Initial commit ──
+  // ── Step 7: MCP servers + API keys ──
+  const setupMcp = await ask("Set up MCP servers and API keys? (y/n)", "y");
+  if (setupMcp.toLowerCase() === "y") {
+    await setupMcpKeys();
+  }
+
+  // ── Step 8: Initial commit ──
+  heading("Step 8: Git Commit");
   try {
     execSync("git add -A", { cwd: wikiPath, stdio: "pipe" });
     const status = execSync("git status --porcelain", { cwd: wikiPath, encoding: "utf-8" });
@@ -193,10 +365,16 @@ async function main() {
   CLAUDE.md:  ${join(HOME, "CLAUDE.md")}${syncMethod === "icloud" ? " (→ iCloud)" : ""}
   /next cmd:  ~/.claude/commands/next.md${syncMethod === "icloud" ? " (→ iCloud)" : ""}
 
+  API keys:   ${IS_MAC ? "macOS Keychain (service: crowkit-mcp)" : "export as env vars in shell profile"}
+
   Next steps:
   1. Add a git remote:  cd ${wikiPath} && git remote add origin <your-repo-url> && git push -u origin main
   2. Drop files into ${wikiPath}/raw/ and ask Claude to "ingest"
   3. Run /next in Claude Code to see what needs attention
+
+  To restore keys on a new Mac:
+    Keys sync via iCloud Keychain automatically (if enabled).
+    Or re-run: npx llm-wiki-setup
 `);
 
   rl.close();

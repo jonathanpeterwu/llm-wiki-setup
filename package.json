@@ -1,9 +1,9 @@
 {
-  "name": "llm-wiki-setup",
-  "version": "1.0.0",
-  "description": "Set up a Karpathy-style LLM wiki for Claude Code with iCloud sync",
+  "name": "crowkit",
+  "version": "0.1.0",
+  "description": "Portable LLM wiki + Claude Code harness with iCloud sync and Keychain secrets",
   "bin": {
-    "llm-wiki-setup": "./bin/setup.mjs"
+    "crowkit": "./bin/setup.mjs"
   },
   "type": "module",
   "keywords": [
@@ -12,13 +12,15 @@
     "karpathy",
     "claude-code",
     "knowledge-base",
-    "icloud"
+    "icloud",
+    "portable",
+    "mcp"
   ],
   "author": "Jonathan Wu",
-  "license": "MIT",
+  "license": "MIT WITH Commons-Clause",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jonathanpeterwu/llm-wiki-setup"
+    "url": "https://github.com/jonathanpeterwu/crowkit"
   },
   "engines": {
     "node": ">=18"

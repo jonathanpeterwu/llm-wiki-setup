@@ -1,18 +1,24 @@
-# llm-wiki-setup
+# crowkit
 
-One-command setup for a [Karpathy-style LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) with Claude Code integration and iCloud sync.
+Portable LLM wiki + Claude Code harness. One command sets up a [Karpathy-style knowledge base](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) with iCloud sync, Keychain secrets, and MCP server config that travels across machines.
+
+> Crows cache food in hundreds of locations and remember every spot. Crowkit does the same with your knowledge.
+
+## Quick Start
+
+```
+npx crowkit
+```
 
 ## What It Does
 
-```
-npx llm-wiki-setup
-```
-
-1. Creates a three-layer wiki directory (`raw/`, `pages/`, `outputs/`)
-2. Generates a `CLAUDE.md` schema that turns Claude Code into a wiki operator
-3. Installs a `/next` slash command for reviewing what needs attention
-4. Optionally syncs config via iCloud Drive across Macs
-5. Initializes a git repo for the wiki content
+1. **Auth preflight** — checks GitHub CLI, npm, Claude Code, git config and tells you what's missing
+2. Creates a three-layer wiki directory (`raw/`, `pages/`, `outputs/`)
+3. Generates a `CLAUDE.md` schema that turns Claude Code into a wiki operator
+4. Installs a `/next` slash command for reviewing what needs attention
+5. Optionally syncs config via iCloud Drive across Macs
+6. **MCP server setup** — adds MCP servers and stores API keys in macOS Keychain
+7. Initializes a git repo for the wiki content
 
 ## The Karpathy Pattern
 
@@ -35,6 +41,27 @@ The `CLAUDE.md` schema tells Claude Code how to ingest sources, write pages, cro
 
 On non-Mac systems, config files are written locally. Copy them manually or use a dotfiles repo.
 
+## API Key Security
+
+API keys for MCP servers (Resend, WorkLayer, etc.) are **never stored in plain text files**.
+
+| Platform | Storage | Syncs across machines? |
+|----------|---------|----------------------|
+| macOS | **Keychain** (`security` CLI) | Yes, via iCloud Keychain |
+| Linux | Env vars in shell profile | Manual |
+
+On macOS, keys are stored under the service name `crowkit-mcp` in Keychain. If you have iCloud Keychain enabled, they sync automatically to your other Macs.
+
+```bash
+# View stored keys
+security find-generic-password -s "crowkit-mcp" -a "RESEND_API_KEY" -w
+
+# Delete a key
+security delete-generic-password -s "crowkit-mcp" -a "RESEND_API_KEY"
+```
+
+The setup tool prompts for keys interactively and stores them — they never touch git or config files.
+
 ## After Setup
 
 ```bash
@@ -52,47 +79,37 @@ git push -u origin main
 ## On a New Machine
 
 ```bash
-# Clone your wiki
+# 1. Clone your wiki
 git clone git@github.com:you/your-wiki.git ~/wiki
 
-# Re-run setup (detects existing wiki, creates symlinks)
-npx llm-wiki-setup
+# 2. Re-run crowkit (detects existing wiki, creates symlinks, restores auth)
+npx crowkit
 ```
 
-iCloud syncs the Claude config automatically between Macs. The setup tool detects existing files and only creates symlinks.
+What auto-syncs vs. what you re-run:
+
+| Thing | First Mac | Second Mac |
+|-------|-----------|------------|
+| Wiki content | `git push` | `git clone` |
+| CLAUDE.md + commands | auto (iCloud) | re-run `npx crowkit` to create symlinks |
+| API keys | auto (iCloud Keychain) | auto if iCloud Keychain enabled, else re-enter |
+| MCP server config | crowkit adds them | re-run `npx crowkit` |
+| GitHub / npm auth | `gh auth login` / `npm login` | `gh auth login` / `npm login` |
 
 ## Requirements
 
 - Node.js 18+
 - Claude Code
-- macOS (for iCloud sync — works without it, config is local-only)
+- macOS (for iCloud sync + Keychain — works without, config is local-only)
 
-## Publishing to npm
-
-First-time setup:
+## Publishing
 
 ```bash
-# Log in to npm (opens browser)
 npm login
-
-# Verify you're logged in
-npm whoami
-```
-
-Publish:
-
-```bash
-cd ~/Dev/llm-wiki-setup
 npm publish
-```
 
-To publish an update, bump the version first:
-
-```bash
-# patch (1.0.0 → 1.0.1), minor (1.0.0 → 1.1.0), or major (1.0.0 → 2.0.0)
-npm version patch
-npm publish
-git push --follow-tags
+# Updates
+npm version patch && npm publish && git push --follow-tags
 ```
 
 ## Contributing
@@ -105,4 +122,4 @@ git push --follow-tags
 
 ## License
 
-MIT
+MIT + [Commons Clause](https://commonsclause.com/). Free to use, modify, and distribute. You may not sell crowkit or offer it as a paid service.
