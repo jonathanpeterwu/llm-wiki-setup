@@ -225,7 +225,7 @@ async function main() {
   if (!allGood) {
     const proceed = await ask("\nSome tools are not authenticated. Continue anyway? (y/n)", "y");
     if (proceed.toLowerCase() !== "y") {
-      console.log("\nFix auth issues above, then re-run: npx llm-wiki-setup");
+      console.log("\nFix auth issues above, then re-run: npx crowkit");
       rl.close();
       return;
     }
@@ -295,26 +295,38 @@ async function main() {
     writeFileSync(join(wikiPath, ".gitignore"), ".DS_Store\n*.swp\n");
   }
 
-  // ── Step 5: Place CLAUDE.md and commands ──
+  // ── Step 5: Place CLAUDE.md and skills ──
   heading("Step 5: Claude Code Config");
 
   const claudeMdContent = template("CLAUDE.md").replace(/{{WIKI_PATH}}/g, wikiPath);
-  const nextMdContent = template("next.md").replace(/{{WIKI_PATH}}/g, wikiPath);
+
+  // Skills to install
+  const skills = ["crowkit-next", "crowkit-ingest", "crowkit-lint"];
 
   if (syncMethod === "icloud") {
     const configDir = join(ICLOUD_BASE, "claude-config");
-    const commandsDir = join(configDir, "commands");
-    mkdirSync(commandsDir, { recursive: true });
+    const skillsDir = join(configDir, "skills");
+    mkdirSync(skillsDir, { recursive: true });
 
+    // CLAUDE.md
     writeFileSync(join(configDir, "CLAUDE.md"), claudeMdContent);
-    writeFileSync(join(commandsDir, "next.md"), nextMdContent);
-
-    // Symlink CLAUDE.md to home
     safeSymlink(join(configDir, "CLAUDE.md"), join(HOME, "CLAUDE.md"));
 
-    // Symlink /next command
-    mkdirSync(join(HOME, ".claude", "commands"), { recursive: true });
-    safeSymlink(join(commandsDir, "next.md"), join(HOME, ".claude", "commands", "next.md"));
+    // Skills
+    for (const skill of skills) {
+      const srcDir = join(TEMPLATES, "skills", skill);
+      const icloudSkillDir = join(skillsDir, skill);
+      const localSkillDir = join(HOME, ".claude", "skills", skill);
+
+      mkdirSync(icloudSkillDir, { recursive: true });
+      mkdirSync(dirname(localSkillDir), { recursive: true });
+
+      const content = readFileSync(join(srcDir, "SKILL.md"), "utf-8")
+        .replace(/{{WIKI_PATH}}/g, wikiPath);
+      writeFileSync(join(icloudSkillDir, "SKILL.md"), content);
+      safeSymlink(icloudSkillDir, localSkillDir);
+      log(`Installed skill: /${skill.replace("crowkit-", "")}`);
+    }
 
     log("Config stored in iCloud, symlinked to local paths");
     log("Other Macs with same Apple ID will sync automatically");
@@ -322,8 +334,17 @@ async function main() {
   } else {
     // Local-only: write directly
     writeFileSync(join(HOME, "CLAUDE.md"), claudeMdContent);
-    mkdirSync(join(HOME, ".claude", "commands"), { recursive: true });
-    writeFileSync(join(HOME, ".claude", "commands", "next.md"), nextMdContent);
+
+    for (const skill of skills) {
+      const srcDir = join(TEMPLATES, "skills", skill);
+      const localSkillDir = join(HOME, ".claude", "skills", skill);
+      mkdirSync(localSkillDir, { recursive: true });
+
+      const content = readFileSync(join(srcDir, "SKILL.md"), "utf-8")
+        .replace(/{{WIKI_PATH}}/g, wikiPath);
+      writeFileSync(join(localSkillDir, "SKILL.md"), content);
+      log(`Installed skill: /${skill.replace("crowkit-", "")}`);
+    }
     log("Config written locally");
   }
 
@@ -363,18 +384,18 @@ async function main() {
   console.log(`
   Wiki:       ${wikiPath}
   CLAUDE.md:  ${join(HOME, "CLAUDE.md")}${syncMethod === "icloud" ? " (→ iCloud)" : ""}
-  /next cmd:  ~/.claude/commands/next.md${syncMethod === "icloud" ? " (→ iCloud)" : ""}
-
+  Skills:     /next, /ingest, /lint${syncMethod === "icloud" ? " (→ iCloud)" : ""}
   API keys:   ${IS_MAC ? "macOS Keychain (service: crowkit-mcp)" : "export as env vars in shell profile"}
 
   Next steps:
   1. Add a git remote:  cd ${wikiPath} && git remote add origin <your-repo-url> && git push -u origin main
-  2. Drop files into ${wikiPath}/raw/ and ask Claude to "ingest"
-  3. Run /next in Claude Code to see what needs attention
+  2. Drop files into ${wikiPath}/raw/ and run /ingest
+  3. Run /next to see what needs attention
+  4. Run /lint to health-check the wiki
 
-  To restore keys on a new Mac:
+  To restore on a new Mac:
     Keys sync via iCloud Keychain automatically (if enabled).
-    Or re-run: npx llm-wiki-setup
+    Re-run: npx crowkit
 `);
 
   rl.close();
